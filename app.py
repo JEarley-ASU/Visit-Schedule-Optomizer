@@ -156,6 +156,139 @@ def remove_visitor(visitor_name):
             st.session_state.name_memory.remove(visitor_name)
         st.rerun()
 
+def import_visitors_from_excel(uploaded_file):
+    """Import visitor names from an Excel file."""
+    try:
+        # Read the Excel file
+        df = pd.read_excel(uploaded_file)
+        
+        # Try to find first and last name columns (case-insensitive)
+        first_name_col = None
+        last_name_col = None
+        name_col = None
+        
+        # Check for common column name variations
+        for col in df.columns:
+            col_lower = str(col).lower().strip()
+            if col_lower in ['first name', 'firstname', 'first', 'fname', 'given name', 'givenname']:
+                first_name_col = col
+            elif col_lower in ['last name', 'lastname', 'last', 'lname', 'surname', 'family name', 'familyname']:
+                last_name_col = col
+            elif col_lower in ['name', 'full name', 'fullname', 'visitor', 'visitor name']:
+                name_col = col
+        
+        imported_count = 0
+        skipped_count = 0
+        errors = []
+        visitors_to_add = []
+        
+        # Ensure the DataFrame has the correct columns
+        expected_columns = [f"Preference {i+1}" for i in range(st.session_state.num_slots + 3)]
+        if list(st.session_state.visitor_data.columns) != expected_columns:
+            existing_data = st.session_state.visitor_data.copy()
+            st.session_state.visitor_data = pd.DataFrame(columns=expected_columns)
+            for idx in existing_data.index:
+                row_data = {}
+                for col in expected_columns:
+                    if col in existing_data.columns:
+                        row_data[col] = existing_data.loc[idx, col]
+                    else:
+                        row_data[col] = " "
+                st.session_state.visitor_data.loc[idx] = row_data
+        
+        # Case 1: Separate first and last name columns
+        if first_name_col and last_name_col:
+            for idx, row in df.iterrows():
+                first_name = str(row[first_name_col]).strip() if pd.notna(row[first_name_col]) else ""
+                last_name = str(row[last_name_col]).strip() if pd.notna(row[last_name_col]) else ""
+                
+                if first_name and last_name and first_name.lower() != 'nan' and last_name.lower() != 'nan':
+                    visitor_name = f"{last_name.upper()}, {first_name.upper()}"
+                    if visitor_name not in st.session_state.visitor_data.index:
+                        visitors_to_add.append((first_name, last_name, visitor_name))
+                        imported_count += 1
+                    else:
+                        skipped_count += 1
+                else:
+                    errors.append(f"Row {idx + 2}: Missing first or last name")
+        
+        # Case 2: Single name column (try to split by comma or space)
+        elif name_col:
+            for idx, row in df.iterrows():
+                full_name = str(row[name_col]).strip() if pd.notna(row[name_col]) else ""
+                
+                if full_name and full_name.lower() != 'nan':
+                    # Try splitting by comma first (LAST, FIRST format)
+                    if ',' in full_name:
+                        parts = [p.strip() for p in full_name.split(',', 1)]
+                        if len(parts) == 2:
+                            last_name, first_name = parts[0], parts[1]
+                        else:
+                            # If only one part after comma, treat as last name
+                            last_name, first_name = parts[0], ""
+                    else:
+                        # Split by space (assume FIRST LAST format)
+                        parts = full_name.split()
+                        if len(parts) >= 2:
+                            first_name = parts[0]
+                            last_name = ' '.join(parts[1:])
+                        else:
+                            first_name = parts[0] if parts else ""
+                            last_name = ""
+                    
+                    if first_name and last_name:
+                        visitor_name = f"{last_name.upper()}, {first_name.upper()}"
+                        if visitor_name not in st.session_state.visitor_data.index:
+                            visitors_to_add.append((first_name, last_name, visitor_name))
+                            imported_count += 1
+                        else:
+                            skipped_count += 1
+                    else:
+                        errors.append(f"Row {idx + 2}: Could not parse name '{full_name}'")
+                else:
+                    errors.append(f"Row {idx + 2}: Empty name")
+        
+        # Case 3: No recognized columns - try first two columns
+        else:
+            if len(df.columns) >= 2:
+                # Assume first column is first name, second is last name
+                first_name_col = df.columns[0]
+                last_name_col = df.columns[1]
+                for idx, row in df.iterrows():
+                    first_name = str(row[first_name_col]).strip() if pd.notna(row[first_name_col]) else ""
+                    last_name = str(row[last_name_col]).strip() if pd.notna(row[last_name_col]) else ""
+                    
+                    if first_name and last_name and first_name.lower() != 'nan' and last_name.lower() != 'nan':
+                        visitor_name = f"{last_name.upper()}, {first_name.upper()}"
+                        if visitor_name not in st.session_state.visitor_data.index:
+                            visitors_to_add.append((first_name, last_name, visitor_name))
+                            imported_count += 1
+                        else:
+                            skipped_count += 1
+                    else:
+                        errors.append(f"Row {idx + 2}: Missing first or last name")
+            else:
+                return False, "Could not find name columns. Expected columns: 'First Name'/'Last Name' or 'Name'", None
+        
+        # Add all visitors in batch
+        for first_name, last_name, visitor_name in visitors_to_add:
+            default_preferences = {f"Preference {i+1}": " " for i in range(st.session_state.num_slots + 3)}
+            st.session_state.visitor_data.loc[visitor_name] = default_preferences
+            if visitor_name not in st.session_state.name_memory:
+                st.session_state.name_memory.append(visitor_name)
+        
+        # Prepare result message
+        result_msg = f"Successfully imported {imported_count} visitor(s)."
+        if skipped_count > 0:
+            result_msg += f" Skipped {skipped_count} duplicate(s)."
+        if errors:
+            result_msg += f" {len(errors)} error(s) encountered."
+        
+        return True, result_msg, errors if errors else None
+        
+    except Exception as e:
+        return False, f"Error reading Excel file: {str(e)}", None
+
 def save_state():
     """Save the current state to a JSON string."""
     # Convert DataFrames to dictionaries with index preserved
@@ -591,6 +724,35 @@ with tab3:
                         st.rerun()
                     else:
                         st.warning("Please enter both first and last name.")
+        
+        # Import Visitors from Excel
+        with st.expander("Import Visitors from Excel", expanded=False):
+            st.info("📋 **Supported formats:**\n"
+                   "- Separate columns: 'First Name' and 'Last Name' (or variations)\n"
+                   "- Single column: 'Name' (will be split by comma or space)\n"
+                   "- First two columns will be used if no recognized headers found")
+            
+            uploaded_file = st.file_uploader(
+                "Choose an Excel file (.xlsx or .xls)",
+                type=['xlsx', 'xls'],
+                key="visitor_excel_upload"
+            )
+            
+            if uploaded_file is not None:
+                if st.button("Import Visitors", key="import_visitors_button"):
+                    success, message, errors = import_visitors_from_excel(uploaded_file)
+                    
+                    if success:
+                        st.success(message)
+                        if errors and len(errors) > 0:
+                            with st.expander("View Errors", expanded=False):
+                                for error in errors[:10]:  # Show first 10 errors
+                                    st.text(error)
+                                if len(errors) > 10:
+                                    st.text(f"... and {len(errors) - 10} more errors")
+                        st.rerun()
+                    else:
+                        st.error(message)
         
         st.divider()
         
