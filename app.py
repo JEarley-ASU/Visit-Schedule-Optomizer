@@ -754,6 +754,35 @@ with tab3:
                     else:
                         st.error(message)
         
+        # Delete Visitors
+        if not st.session_state.visitor_data.empty:
+            with st.expander("Delete Visitors", expanded=False):
+                sorted_visitor_names = sorted(list(st.session_state.visitor_data.index))
+                selected_visitors_to_delete = st.multiselect(
+                    "Select visitors to delete:",
+                    options=sorted_visitor_names,
+                    key="visitors_to_delete_select",
+                    help="Select one or more visitors to remove from the list"
+                )
+                
+                if selected_visitors_to_delete:
+                    st.warning(f"⚠️ You are about to delete {len(selected_visitors_to_delete)} visitor(s).")
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("🗑️ Delete Selected", key="delete_visitors_button", type="primary"):
+                            deleted_count = 0
+                            # Batch delete all selected visitors
+                            for visitor_name in selected_visitors_to_delete:
+                                if visitor_name in st.session_state.visitor_data.index:
+                                    st.session_state.visitor_data = st.session_state.visitor_data.drop(index=visitor_name)
+                                    if visitor_name in st.session_state.name_memory:
+                                        st.session_state.name_memory.remove(visitor_name)
+                                    deleted_count += 1
+                            st.success(f"Successfully deleted {deleted_count} visitor(s)!")
+                            st.rerun()
+                    with col2:
+                        st.write("")  # Spacing
+        
         st.divider()
         
         # Visitor Table
