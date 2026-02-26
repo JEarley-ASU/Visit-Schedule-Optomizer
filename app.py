@@ -831,22 +831,18 @@ with tab3:
         
         st.divider()
         
-        # Visitor Table
+        # Visitors list (expander per visitor, like Faculty Info)
         if not st.session_state.visitor_data.empty:
             st.subheader("Visitors and Preferences")
             
-            # Clear preferences for any professors who are completely unavailable
             clear_preferences_for_unavailable_professors()
             
-            # Get professor names for dropdowns
             professor_names = sorted(list(st.session_state.professor_data.index)) if not st.session_state.professor_data.empty else []
             
             if not professor_names:
                 st.warning("Please add professors first in the 'Faculty Info' tab.")
             else:
-                # Professors that appear in dropdowns (exclude fully unavailable)
                 listable_professors = [p for p in professor_names if p not in get_fully_unavailable_professors()]
-                # Show current professor count and list for reference with refresh option
                 col_info, col_refresh = st.columns([4, 1])
                 with col_info:
                     if listable_professors:
@@ -858,81 +854,71 @@ with tab3:
                     if st.button("🔄 Refresh", help="Refresh to see newly added professors", key="refresh_visitor_editor"):
                         st.rerun()
                 
-                # Create editable table for visitors (sorted alphabetically)
-                visitor_display = st.session_state.visitor_data.copy()
-                # Sort by index (visitor names) alphabetically
-                visitor_display = visitor_display.sort_index()
-                visitor_display.index.name = "Visitor"
-                # Normalize empty values: convert " " (space) to "" (empty string) for display
-                for col in visitor_display.columns:
-                    visitor_display[col] = visitor_display[col].apply(
-                        lambda x: "" if (isinstance(x, str) and x.strip() == " ") or x == " " else x
-                    )
+                num_prefs = st.session_state.num_slots + 3
+                pref_options = [""] + listable_professors
+                visitor_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
+                sorted_visitors = sorted(st.session_state.visitor_data.index)
                 
-                # Create column config for preferences - this gets the latest professor list on each render
-                # Exclude fully unavailable professors from the dropdown so they can't be selected
-                column_config = {}
-                current_prof_names = sorted(list(st.session_state.professor_data.index)) if not st.session_state.professor_data.empty else []
-                # Filter out any empty strings or whitespace-only names
-                current_prof_names = [name for name in current_prof_names if name and str(name).strip()]
-                # Exclude fully unavailable professors from dropdown options
-                fully_unavailable = get_fully_unavailable_professors()
-                current_prof_names = [name for name in current_prof_names if name not in fully_unavailable]
-                
-                # Build options and mapping (no strikethrough needed; only listable professors are shown)
-                prof_display_names = current_prof_names
-                prof_name_mapping = {name: name for name in current_prof_names}
-                
-                for col in visitor_display.columns:
-                    # Always use the current professor_names list (updated on each page render)
-                    # Use empty string instead of space for the blank option to avoid duplicates
-                    column_config[col] = st.column_config.SelectboxColumn(
-                        col,
-                        options=[""] + prof_display_names,  # Use display names with strikethrough
-                        required=False
-                    )
-                
-                # Store the mapping in session state so we can use it when updating preferences
-                st.session_state.prof_name_mapping = prof_name_mapping
-                
-                # Use a stable key but the column_config will have fresh options
-                edited_visitors = st.data_editor(
-                    visitor_display,
-                    use_container_width=True,
-                    key="visitor_editor",
-                    column_config=column_config,
-                    num_rows="dynamic"
-                )
-                
-                # Update visitor_data based on edits
-                if not edited_visitors.equals(visitor_display):
-                    # Handle new rows
-                    for visitor in edited_visitors.index:
-                        if visitor not in st.session_state.visitor_data.index:
-                            # New visitor added
-                            if visitor not in st.session_state.name_memory:
-                                st.session_state.name_memory.append(visitor)
-                        # Update preferences
-                        for col in edited_visitors.columns:
-                            if col in st.session_state.visitor_data.columns:
-                                pref_value = edited_visitors.loc[visitor, col]
-                                # Convert empty string to space for consistency with optimization
-                                if pref_value == "" or (isinstance(pref_value, str) and pref_value.strip() == ""):
-                                    pref_value = " "
+                for visitor_name in sorted_visitors:
+                    vk = visitor_key_safe(visitor_name)
+                    # Summary for expander label: which preferences are set
+                    prefs_set = []
+                    for i in range(num_prefs):
+                        col = f"Preference {i + 1}"
+                        val = st.session_state.visitor_data.loc[visitor_name, col]
+                        if pd.notna(val) and str(val).strip() and str(val).strip() != " ":
+                            prefs_set.append(str(i + 1))
+                    prefs_text = f" — Preferences set: {', '.join(prefs_set)}" if prefs_set else " — No preferences set"
+                    
+                    with st.expander(f"Visitor: {visitor_name}{prefs_text}", expanded=False):
+                        new_name = st.text_input("Visitor Name", value=visitor_name, key=f"visitor_name_{vk}")
+                        if new_name != visitor_name and new_name:
+                            if new_name not in st.session_state.visitor_data.index:
+                                st.session_state.visitor_data = st.session_state.visitor_data.rename(index={visitor_name: new_name})
+                                if visitor_name in st.session_state.name_memory:
+                                    idx = st.session_state.name_memory.index(visitor_name)
+                                    st.session_state.name_memory[idx] = new_name
                                 else:
-                                    # If the value is a display name with strikethrough, convert back to original name
-                                    prof_mapping = st.session_state.get('prof_name_mapping', {})
-                                    if pref_value in prof_mapping:
-                                        pref_value = prof_mapping[pref_value]
-                                st.session_state.visitor_data.loc[visitor, col] = pref_value
-                    
-                    # Handle removed rows
-                    for visitor in st.session_state.visitor_data.index:
-                        if visitor not in edited_visitors.index:
-                            remove_visitor(visitor)
-                            break
-                    
-                    st.rerun()
+                                    st.session_state.name_memory.append(new_name)
+                                st.rerun()
+                        
+                        st.write("**Preferences** (select professor for each; leave blank for no preference):")
+                        cols = st.columns(min(6, num_prefs))
+                        for pref_idx in range(num_prefs):
+                            col_name = f"Preference {pref_idx + 1}"
+                            col_idx = pref_idx % len(cols)
+                            with cols[col_idx]:
+                                current_val = st.session_state.visitor_data.loc[visitor_name, col_name]
+                                display_val = "" if (pd.isna(current_val) or str(current_val).strip() == "" or str(current_val).strip() == " ") else str(current_val).strip()
+                                # Index in pref_options: 0 is "", then listable_professors in order
+                                if display_val and display_val in listable_professors:
+                                    option_index = listable_professors.index(display_val) + 1
+                                else:
+                                    option_index = 0
+                                selected = st.selectbox(
+                                    col_name,
+                                    options=pref_options,
+                                    index=min(option_index, len(pref_options) - 1),
+                                    key=f"visitor_pref_{vk}_{pref_idx}"
+                                )
+                                new_val = " " if (selected == "" or not selected) else selected
+                                current_normalized = " " if (pd.isna(current_val) or str(current_val).strip() in ("", " ")) else str(current_val).strip()
+                                if new_val != current_normalized:
+                                    st.session_state.visitor_data.loc[visitor_name, col_name] = new_val
+                                    st.rerun()
+                        
+                        if st.button("Remove Visitor", key=f"remove_visitor_exp_{vk}"):
+                            remove_visitor(visitor_name)
+                            st.rerun()
+                
+                # Summary table (read-only view, like Faculty summary)
+                st.subheader("Summary Table")
+                visitor_summary = st.session_state.visitor_data.copy().sort_index()
+                for c in visitor_summary.columns:
+                    visitor_summary[c] = visitor_summary[c].apply(
+                        lambda x: "" if (isinstance(x, str) and x.strip() == " ") or pd.isna(x) else x
+                    )
+                st.dataframe(visitor_summary, use_container_width=True)
         else:
             st.info("No visitors added yet. Use the 'Add New Visitor' form above.")
 
