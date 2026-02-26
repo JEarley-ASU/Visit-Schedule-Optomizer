@@ -713,6 +713,7 @@ with tab2:
                                 st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"] = new_value
                                 # Check if professor became completely unavailable and clear preferences
                                 clear_preferences_for_unavailable_professors()
+                                st.rerun()
                     
                     # Remove button
                     if st.button("Remove Professor", key=f"remove_prof_exp_{pk}"):
