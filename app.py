@@ -116,6 +116,17 @@ def clear_preferences_for_unavailable_professors():
                 if pref_value in unavailable_professors:
                     st.session_state.visitor_data.loc[visitor, col] = " "
 
+def get_fully_unavailable_professors():
+    """Return set of professor names who have every time slot set to unavailable."""
+    if st.session_state.professor_data.empty:
+        return set()
+    out = set()
+    for prof_name in st.session_state.professor_data.index:
+        prof_row = st.session_state.professor_data.loc[prof_name]
+        if all(prof_row[col] == 0 for col in prof_row.index):
+            out.add(prof_name)
+    return out
+
 def add_visitor(first_name, last_name):
     """Add a new visitor to the data."""
     if first_name and last_name:
@@ -446,9 +457,15 @@ def export_to_excel():
     
     output = BytesIO()
     
-    # Sort schedules alphabetically
+    # Hide fully-unavailable professors from exported schedules
+    fully_unavailable = get_fully_unavailable_professors()
     visitor_schedule_sorted = st.session_state.visitor_schedule.sort_index()
     professor_schedule_sorted = st.session_state.professor_schedule.sort_index()
+    if fully_unavailable:
+        professor_schedule_sorted = professor_schedule_sorted.drop(index=fully_unavailable, errors="ignore")
+        visitor_schedule_sorted = visitor_schedule_sorted.applymap(
+            lambda x: "" if (pd.notna(x) and str(x).strip() in fully_unavailable) else x
+        )
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         # Write visitor schedule
@@ -813,14 +830,16 @@ with tab3:
             if not professor_names:
                 st.warning("Please add professors first in the 'Faculty Info' tab.")
             else:
+                # Professors that appear in dropdowns (exclude fully unavailable)
+                listable_professors = [p for p in professor_names if p not in get_fully_unavailable_professors()]
                 # Show current professor count and list for reference with refresh option
                 col_info, col_refresh = st.columns([4, 1])
                 with col_info:
-                    if professor_names:
-                        prof_list_display = ", ".join(professor_names[:5])
-                        if len(professor_names) > 5:
-                            prof_list_display += f", ... (+{len(professor_names) - 5} more)"
-                        st.info(f"💡 **{len(professor_names)} professor(s) available:** {prof_list_display}")
+                    if listable_professors:
+                        prof_list_display = ", ".join(listable_professors[:5])
+                        if len(listable_professors) > 5:
+                            prof_list_display += f", ... (+{len(listable_professors) - 5} more)"
+                        st.info(f"💡 **{len(listable_professors)} professor(s) in dropdown:** {prof_list_display}")
                 with col_refresh:
                     if st.button("🔄 Refresh", help="Refresh to see newly added professors", key="refresh_visitor_editor"):
                         st.rerun()
@@ -837,34 +856,18 @@ with tab3:
                     )
                 
                 # Create column config for preferences - this gets the latest professor list on each render
-                # The key is to ensure professor_names is fetched fresh each time this code runs
+                # Exclude fully unavailable professors from the dropdown so they can't be selected
                 column_config = {}
                 current_prof_names = sorted(list(st.session_state.professor_data.index)) if not st.session_state.professor_data.empty else []
                 # Filter out any empty strings or whitespace-only names
                 current_prof_names = [name for name in current_prof_names if name and str(name).strip()]
+                # Exclude fully unavailable professors from dropdown options
+                fully_unavailable = get_fully_unavailable_professors()
+                current_prof_names = [name for name in current_prof_names if name not in fully_unavailable]
                 
-                # Check which professors are completely unavailable and mark them
-                unavailable_professors = set()
-                for prof_name in current_prof_names:
-                    if prof_name in st.session_state.professor_data.index:
-                        # Check if all slots are unavailable (all values are 0)
-                        prof_row = st.session_state.professor_data.loc[prof_name]
-                        if all(prof_row[col] == 0 for col in prof_row.index):
-                            unavailable_professors.add(prof_name)
-                
-                # Create display names with strike-through for unavailable professors
-                # Use Unicode strikethrough combining characters
-                prof_display_names = []
-                prof_name_mapping = {}  # Map display name to original name
-                for prof_name in current_prof_names:
-                    if prof_name in unavailable_professors:
-                        # Add strikethrough using Unicode combining characters
-                        display_name = '\u0336'.join(prof_name) + '\u0336'  # Strikethrough each character
-                        prof_display_names.append(display_name)
-                        prof_name_mapping[display_name] = prof_name
-                    else:
-                        prof_display_names.append(prof_name)
-                        prof_name_mapping[prof_name] = prof_name
+                # Build options and mapping (no strikethrough needed; only listable professors are shown)
+                prof_display_names = current_prof_names
+                prof_name_mapping = {name: name for name in current_prof_names}
                 
                 for col in visitor_display.columns:
                     # Always use the current professor_names list (updated on each page render)
@@ -948,19 +951,25 @@ with tab4:
         
         # Display schedules
         if st.session_state.visitor_schedule is not None and st.session_state.professor_schedule is not None:
+            # Hide faculty who are fully unavailable from the displayed schedules
+            fully_unavailable = get_fully_unavailable_professors()
+            
             st.subheader("Visitor Schedule")
-            # Sort visitor schedule alphabetically
             visitor_schedule_display = st.session_state.visitor_schedule.copy()
             visitor_schedule_display = visitor_schedule_display.sort_index()
+            if fully_unavailable:
+                visitor_schedule_display = visitor_schedule_display.applymap(
+                    lambda x: "" if (pd.notna(x) and str(x).strip() in fully_unavailable) else x
+                )
             st.dataframe(visitor_schedule_display, use_container_width=True)
             
             st.divider()
             
             st.subheader("Professor Schedule")
-            # Color code based on professor availability
-            # Sort professor schedule alphabetically
             prof_schedule_display = st.session_state.professor_schedule.copy()
             prof_schedule_display = prof_schedule_display.sort_index()
+            if fully_unavailable:
+                prof_schedule_display = prof_schedule_display.drop(index=fully_unavailable, errors="ignore")
             
             def color_prof_schedule_cells(series):
                 """Color cells based on professor availability for that time slot."""
