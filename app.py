@@ -636,11 +636,14 @@ with tab2:
             st.subheader("Professors")
             
             # Display professor table with availability (sorted alphabetically)
+            # Use professor name in widget keys so state stays with the correct person after reruns/sorts
             sorted_professors = sorted(st.session_state.professor_data.index)
-            for prof_idx, prof_name in enumerate(sorted_professors):
+            prof_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
+            for prof_name in sorted_professors:
+                pk = prof_key_safe(prof_name)
                 with st.expander(f"Professor: {prof_name}", expanded=False):
                     # Allow renaming
-                    new_name = st.text_input("Professor Name", value=prof_name, key=f"rename_prof_{prof_idx}")
+                    new_name = st.text_input("Professor Name", value=prof_name, key=f"rename_prof_{pk}")
                     if new_name != prof_name and new_name:
                         if new_name not in st.session_state.professor_data.index:
                             st.session_state.professor_data.rename(index={prof_name: new_name}, inplace=True)
@@ -661,7 +664,7 @@ with tab2:
                                 f"Slot {slot_idx + 1}",
                                 options=["Available", "Unavailable"],
                                 index=0 if current_avail == 1 else 1,
-                                key=f"prof_avail_{prof_idx}_{slot_idx}"
+                                key=f"prof_avail_{pk}_{slot_idx}"
                             )
                             new_value = 1 if selected == "Available" else 0
                             if new_value != current_avail:
@@ -670,7 +673,7 @@ with tab2:
                                 clear_preferences_for_unavailable_professors()
                     
                     # Remove button
-                    if st.button("Remove Professor", key=f"remove_prof_exp_{prof_idx}"):
+                    if st.button("Remove Professor", key=f"remove_prof_exp_{pk}"):
                         remove_professor(prof_name)
                         st.rerun()
             
