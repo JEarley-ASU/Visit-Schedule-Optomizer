@@ -373,8 +373,11 @@ def save_professor_names():
     professor_names = sorted(list(st.session_state.professor_data.index))
     return json.dumps({"professor_names": professor_names}, indent=2)
 
-def load_professor_names(names_json):
-    """Load professor names from JSON and initialize them."""
+def load_professor_names(names_json, default_slots="available"):
+    """Load professor names from JSON and initialize them.
+    
+    default_slots: "available" (all slots available) or "unavailable" (all slots unavailable)
+    """
     try:
         data = json.loads(names_json)
         professor_names = sorted(data["professor_names"])
@@ -382,9 +385,10 @@ def load_professor_names(names_json):
         # Clear existing professor data
         st.session_state.professor_data = pd.DataFrame(columns=[f"Slot {i + 1}" for i in range(st.session_state.num_slots)])
         
-        # Add each professor with default availability (all available)
+        # 1 = available, 0 = unavailable
+        slot_value = 1 if default_slots == "available" else 0
         for name in professor_names:
-            availability = [1] * st.session_state.num_slots
+            availability = [slot_value] * st.session_state.num_slots
             st.session_state.professor_data.loc[name] = availability
         
         st.rerun()
@@ -589,11 +593,19 @@ with tab2:
             )
         
         with col2:
-            uploaded_profs = st.file_uploader("Load Professors", type=['json'], key="load_profs")
+            st.subheader("Load Professors")
+            default_slots_on_load = st.radio(
+                "Set loaded professors' time slots to:",
+                options=["available", "unavailable"],
+                format_func=lambda x: "All available" if x == "available" else "All unavailable",
+                key="load_profs_default_slots",
+                help="Choose whether each loaded professor starts with every slot available or unavailable"
+            )
+            uploaded_profs = st.file_uploader("Choose professor names JSON", type=['json'], key="load_profs")
             if uploaded_profs is not None:
                 prof_content = uploaded_profs.read().decode('utf-8')
                 if st.button("Load Professors", key="load_profs_button"):
-                    load_professor_names(prof_content)
+                    load_professor_names(prof_content, default_slots=default_slots_on_load)
         
         st.divider()
         
