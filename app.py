@@ -524,31 +524,34 @@ with tab1:
         col_save, col_load = st.columns(2)
         
         with col_save:
-            # Initialize filename in session state
             if 'progress_save_filename' not in st.session_state:
                 st.session_state.progress_save_filename = "meeting_scheduler_state.json"
             
-            # Custom filename input
-            custom_filename = st.text_input(
-                "Filename (without extension):",
-                value=st.session_state.progress_save_filename.replace(".json", ""),
-                key="progress_filename_input",
-                help="Enter a custom filename for saving progress"
-            )
-            # Update session state
-            if custom_filename:
-                # Ensure it has .json extension
-                filename = custom_filename if custom_filename.endswith('.json') else f"{custom_filename}.json"
-                st.session_state.progress_save_filename = filename
+            # Form: submit captures current text without needing Enter; then we show download with that filename
+            with st.form("save_progress_form"):
+                custom_filename = st.text_input(
+                    "Filename (without extension):",
+                    value=st.session_state.progress_save_filename.replace(".json", ""),
+                    key="progress_filename_input",
+                    help="Enter a custom filename for saving progress"
+                )
+                submitted = st.form_submit_button("Save Progress")
+            
+            # Use submitted form value if just submitted, else session state / key
+            if submitted:
+                fn_raw = (custom_filename or "").strip() or "meeting_scheduler_state"
+                fn = fn_raw if fn_raw.endswith('.json') else f"{fn_raw}.json"
+                st.session_state.progress_save_filename = fn
             else:
-                st.session_state.progress_save_filename = "meeting_scheduler_state.json"
+                fn = st.session_state.progress_save_filename
             
             state_json = save_state()
             st.download_button(
                 label="Save Progress",
                 data=state_json,
-                file_name=st.session_state.progress_save_filename,
-                mime="application/json"
+                file_name=fn,
+                mime="application/json",
+                key="save_progress_download"
             )
         
         with col_load:
