@@ -671,7 +671,13 @@ with tab2:
             prof_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
             for prof_name in sorted_professors:
                 pk = prof_key_safe(prof_name)
-                with st.expander(f"Professor: {prof_name}", expanded=False):
+                # Build "Slots X, Y, Z available" for the expander label
+                available_slots = [
+                    str(i + 1) for i in range(st.session_state.num_slots)
+                    if st.session_state.professor_data.loc[prof_name, f"Slot {i + 1}"] == 1
+                ]
+                slots_text = f" — Slots {', '.join(available_slots)} available" if available_slots else " — No slots available"
+                with st.expander(f"Professor: {prof_name}{slots_text}", expanded=False):
                     # Allow renaming
                     new_name = st.text_input("Professor Name", value=prof_name, key=f"rename_prof_{pk}")
                     if new_name != prof_name and new_name:
@@ -684,12 +690,18 @@ with tab2:
                                         st.session_state.visitor_data.loc[visitor, col] = new_name
                             st.rerun()
                     
-                    # Availability selectors
+                    # Availability selectors with green/red color indicator
                     cols = st.columns(min(6, st.session_state.num_slots))
                     for slot_idx in range(st.session_state.num_slots):
                         col_idx = slot_idx % len(cols)
                         with cols[col_idx]:
                             current_avail = st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"]
+                            # Color bar: green = available, red = unavailable
+                            bar_color = "#90EE90" if current_avail == 1 else "#FFB6C1"
+                            st.markdown(
+                                f'<div style="height:4px; background:{bar_color}; border-radius:2px; margin-bottom:2px;"></div>',
+                                unsafe_allow_html=True
+                            )
                             selected = st.selectbox(
                                 f"Slot {slot_idx + 1}",
                                 options=["Available", "Unavailable"],
