@@ -9,16 +9,19 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
     students_df.replace(' ', None, inplace=True)  # Replace empty spaces with None
     students = students_df.index.tolist()
 
-    # Ensure professor_df has the correct columns assigned
-    # Check if columns match, if not, try to map them
+    # Ensure professor_df has the correct columns in the correct order (Slot 1, Slot 2, ...).
+    # If we only rename by position we can mix up slots when column order differs (e.g. last slot mixed in).
     if list(professor_df.columns) != time_slots:
-        # If column count matches, just rename
-        if len(professor_df.columns) == len(time_slots):
-            professor_df.columns = time_slots
-        else:
-            # Column count mismatch - this is an error
+        if len(professor_df.columns) != len(time_slots):
             raise ValueError(f"Professor data has {len(professor_df.columns)} columns but {len(time_slots)} time slots expected. "
                            f"Columns: {list(professor_df.columns)}, Time slots: {time_slots}")
+        # Same length: reorder by time_slots if names match, else rename by position
+        if set(professor_df.columns) == set(time_slots):
+            # Same names — reorder columns so Slot 1..N are in order; don't rename by position (would mix slots)
+            professor_df = professor_df[time_slots].copy()
+        else:
+            # Different names — assume column order matches time_slots and rename
+            professor_df.columns = time_slots
     
     # Ensure professor availability values are numeric (0 or 1)
     for col in professor_df.columns:
@@ -185,8 +188,17 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
     
     # Primary objective: maximize preference weights
     preference_objective = lpSum(
-        (preferences[s][p] + slot_bonus[t]) * x[s, p, t] 
+        (preferences[s][p] + slot_bonus[t]) * x[s, p, t]
         for s in students for p in preferences.get(s, {}) for t in time_slots
+    )
+    
+    # Tie-breaking: small bonus per assignment so we prefer filling slots when possible.
+    # E.g. if a student has slot 4 empty and Don is available and is a preference, we want that assignment.
+    # Use a tiny fraction of min preference weight so this only breaks ties.
+    fill_bonus = min_pref_weight * 1e-9
+    fill_objective = lpSum(
+        fill_bonus * x[s, p, t]
+        for (s, p, t) in x
     )
     
     # Secondary objective: minimize groups with multiple students
@@ -196,8 +208,8 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
         for p in professors for t in time_slots
     )
     
-    # Combined objective: maximize preferences, minimize multiple-student groups
-    model += preference_objective - group_penalty_term
+    # Combined objective: maximize preferences, prefer more assignments when equal, minimize multi-student groups
+    model += preference_objective + fill_objective - group_penalty_term
 
     # Constraints
 

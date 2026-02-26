@@ -484,25 +484,26 @@ def export_to_excel():
         # Define colors
         green_fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
         red_fill = PatternFill(start_color="FFB6C1", end_color="FFB6C1", fill_type="solid")
+        gray_fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
         
-        # Get professor data for availability checking
-        # Map time slot column names (Time Slot 1 -> Slot 1)
-        for row_idx, prof_name in enumerate(professor_schedule_sorted.index, start=2):  # start=2 because row 1 is header
+        # Color cells: green = has meeting, gray = available but empty, red = unavailable
+        for row_idx, prof_name in enumerate(professor_schedule_sorted.index, start=2):
             if prof_name in st.session_state.professor_data.index:
-                for col_idx, col_name in enumerate(professor_schedule_sorted.columns, start=2):  # start=2 because col 1 is professor name
+                for col_idx, col_name in enumerate(professor_schedule_sorted.columns, start=2):
                     if col_name.startswith("Time Slot "):
                         slot_num = col_name.replace("Time Slot ", "")
                         slot_col = f"Slot {slot_num}"
                         
-                        # Check if slot column exists in professor_data
                         if slot_col in st.session_state.professor_data.columns:
                             availability = st.session_state.professor_data.loc[prof_name, slot_col]
                             cell = worksheet.cell(row=row_idx, column=col_idx)
+                            cell_val = professor_schedule_sorted.loc[prof_name, col_name]
+                            has_meeting = pd.notna(cell_val) and str(cell_val).strip() != ''
                             
                             if availability == 1:
-                                cell.fill = green_fill  # Green for available
+                                cell.fill = green_fill if has_meeting else gray_fill
                             else:
-                                cell.fill = red_fill  # Red for unavailable
+                                cell.fill = red_fill
     
     output.seek(0)
     return output
@@ -972,7 +973,7 @@ with tab4:
                 prof_schedule_display = prof_schedule_display.drop(index=fully_unavailable, errors="ignore")
             
             def color_prof_schedule_cells(series):
-                """Color cells based on professor availability for that time slot."""
+                """Color cells: green = has a meeting and professor available, gray = available but empty, red = unavailable."""
                 prof_name = series.name
                 styles = []
                 
@@ -982,22 +983,28 @@ with tab4:
                         slot_num = col_name.replace("Time Slot ", "")
                         slot_col = f"Slot {slot_num}"
                         
+                        # Cell content: is there a visitor assigned?
+                        cell_val = series[col_name]
+                        has_meeting = pd.notna(cell_val) and str(cell_val).strip() != ''
+                        
                         # Check professor availability
                         if prof_name in st.session_state.professor_data.index:
-                            # Check if the slot column exists in professor_data
                             if slot_col in st.session_state.professor_data.columns:
                                 availability = st.session_state.professor_data.loc[prof_name, slot_col]
                                 if availability == 1:
-                                    styles.append('background-color: #90EE90')  # Light green for available
+                                    # Professor available: green only if slot has a meeting, else neutral gray
+                                    if has_meeting:
+                                        styles.append('background-color: #90EE90')  # Light green = has meeting
+                                    else:
+                                        styles.append('background-color: #E8E8E8')  # Light gray = available but empty
                                 else:
-                                    styles.append('background-color: #FFB6C1')  # Light red for unavailable
+                                    styles.append('background-color: #FFB6C1')  # Light red = unavailable
                             else:
-                                # Slot doesn't exist in current professor_data (maybe schedule was generated with different num_slots)
-                                styles.append('')  # No styling if slot column doesn't exist
+                                styles.append('')
                         else:
-                            styles.append('')  # No styling if professor not found
+                            styles.append('')
                     else:
-                        styles.append('')  # No styling for non-time-slot columns
+                        styles.append('')
                 
                 return styles
             
