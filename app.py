@@ -939,31 +939,39 @@ with tab4:
                 styles = []
                 
                 for col_name in prof_schedule_display.columns:
-                    # Map column name to slot number (e.g., "Time Slot 1" -> "Slot 1")
                     if col_name.startswith("Time Slot "):
-                        slot_num = col_name.replace("Time Slot ", "")
+                        slot_num = col_name.replace("Time Slot ", "").strip()
                         slot_col = f"Slot {slot_num}"
                         
-                        # Cell content: is there a visitor assigned?
                         cell_val = series[col_name]
-                        has_meeting = pd.notna(cell_val) and str(cell_val).strip() != ''
-                        
-                        # Check professor availability
-                        if prof_name in st.session_state.professor_data.index:
-                            if slot_col in st.session_state.professor_data.columns:
-                                availability = st.session_state.professor_data.loc[prof_name, slot_col]
-                                if availability == 1:
-                                    # Professor available: green only if slot has a meeting, else neutral gray
-                                    if has_meeting:
-                                        styles.append('background-color: #90EE90')  # Light green = has meeting
-                                    else:
-                                        styles.append('background-color: #E8E8E8')  # Light gray = available but empty
-                                else:
-                                    styles.append('background-color: #FFB6C1')  # Light red = unavailable
-                            else:
-                                styles.append('')
+                        # Robust: treat nan, None, empty string, or string "nan" as no meeting
+                        if pd.isna(cell_val):
+                            has_meeting = False
                         else:
-                            styles.append('')
+                            s = str(cell_val).strip()
+                            has_meeting = bool(s and s.lower() != 'nan')
+                        
+                        try:
+                            avail_val = st.session_state.professor_data.loc[prof_name, slot_col]
+                            availability = int(avail_val) == 1 if pd.notna(avail_val) else False
+                        except (KeyError, TypeError, ValueError):
+                            availability = False
+                        
+                        if prof_name in st.session_state.professor_data.index and slot_col in st.session_state.professor_data.columns:
+                            if availability:
+                                if has_meeting:
+                                    styles.append('background-color: #90EE90')
+                                else:
+                                    styles.append('background-color: #E8E8E8')
+                            else:
+                                styles.append('background-color: #FFB6C1')
+                        else:
+                            # Fallback: color by content so we always show something
+                            if has_meeting:
+                                styles.append('background-color: #90EE90')
+                            else:
+                                styles.append('background-color: #E8E8E8')
+                    
                     else:
                         styles.append('')
                 
