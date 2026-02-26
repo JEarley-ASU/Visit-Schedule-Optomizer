@@ -800,35 +800,6 @@ with tab3:
                     else:
                         st.error(message)
         
-        # Delete Visitors
-        if not st.session_state.visitor_data.empty:
-            with st.expander("Delete Visitors", expanded=False):
-                sorted_visitor_names = sorted(list(st.session_state.visitor_data.index))
-                selected_visitors_to_delete = st.multiselect(
-                    "Select visitors to delete:",
-                    options=sorted_visitor_names,
-                    key="visitors_to_delete_select",
-                    help="Select one or more visitors to remove from the list"
-                )
-                
-                if selected_visitors_to_delete:
-                    st.warning(f"⚠️ You are about to delete {len(selected_visitors_to_delete)} visitor(s).")
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        if st.button("🗑️ Delete Selected", key="delete_visitors_button", type="primary"):
-                            deleted_count = 0
-                            # Batch delete all selected visitors
-                            for visitor_name in selected_visitors_to_delete:
-                                if visitor_name in st.session_state.visitor_data.index:
-                                    st.session_state.visitor_data = st.session_state.visitor_data.drop(index=visitor_name)
-                                    if visitor_name in st.session_state.name_memory:
-                                        st.session_state.name_memory.remove(visitor_name)
-                                    deleted_count += 1
-                            st.success(f"Successfully deleted {deleted_count} visitor(s)!")
-                            st.rerun()
-                    with col2:
-                        st.write("")  # Spacing
-        
         st.divider()
         
         # Visitors list (expander per visitor, like Faculty Info)
@@ -861,16 +832,7 @@ with tab3:
                 
                 for visitor_name in sorted_visitors:
                     vk = visitor_key_safe(visitor_name)
-                    # Summary for expander label: which preferences are set
-                    prefs_set = []
-                    for i in range(num_prefs):
-                        col = f"Preference {i + 1}"
-                        val = st.session_state.visitor_data.loc[visitor_name, col]
-                        if pd.notna(val) and str(val).strip() and str(val).strip() != " ":
-                            prefs_set.append(str(i + 1))
-                    prefs_text = f" — Preferences set: {', '.join(prefs_set)}" if prefs_set else " — No preferences set"
-                    
-                    with st.expander(f"Visitor: {visitor_name}{prefs_text}", expanded=False):
+                    with st.expander(f"Visitor: {visitor_name}", expanded=False):
                         new_name = st.text_input("Visitor Name", value=visitor_name, key=f"visitor_name_{vk}")
                         if new_name != visitor_name and new_name:
                             if new_name not in st.session_state.visitor_data.index:
