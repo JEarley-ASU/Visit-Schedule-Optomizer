@@ -527,20 +527,14 @@ with tab1:
             if 'progress_save_filename' not in st.session_state:
                 st.session_state.progress_save_filename = "meeting_scheduler_state.json"
             
-            # Form: submit captures current text without needing Enter; then we show download with that filename
-            with st.form("save_progress_form"):
-                custom_filename = st.text_input(
-                    "Filename (without extension):",
-                    value=st.session_state.progress_save_filename.replace(".json", ""),
-                    key="progress_filename_input",
-                    help="Enter a custom filename for saving progress"
-                )
-                submitted = st.form_submit_button("Save Progress")
-            
-            # Use submitted form value if just submitted, else session state / key
-            if submitted:
-                fn_raw = (custom_filename or "").strip() or "meeting_scheduler_state"
-                fn = fn_raw if fn_raw.endswith('.json') else f"{fn_raw}.json"
+            custom_filename = st.text_input(
+                "Filename (without extension):",
+                value=st.session_state.progress_save_filename.replace(".json", ""),
+                key="progress_filename_input",
+                help="Type the filename, press Enter (or click outside the box) so it’s applied, then click Save Progress."
+            )
+            if custom_filename:
+                fn = custom_filename if custom_filename.endswith('.json') else f"{custom_filename}.json"
                 st.session_state.progress_save_filename = fn
             else:
                 fn = st.session_state.progress_save_filename
