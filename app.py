@@ -937,14 +937,14 @@ with tab4:
                 """Color cells: green = has a meeting and professor available, gray = available but empty, red = unavailable."""
                 prof_name = series.name
                 styles = []
-                
-                for col_name in prof_schedule_display.columns:
+                # Iterate by column index so style[i] always applies to the i-th column (avoids order/name mismatch)
+                for i, col_name in enumerate(prof_schedule_display.columns):
                     if col_name.startswith("Time Slot "):
-                        slot_num = col_name.replace("Time Slot ", "").strip()
+                        # Derive slot from position: column 0 = Slot 1, column 1 = Slot 2, etc.
+                        slot_num = i + 1
                         slot_col = f"Slot {slot_num}"
                         
-                        cell_val = series[col_name]
-                        # Robust: treat nan, None, empty string, or string "nan" as no meeting
+                        cell_val = series.iloc[i]
                         if pd.isna(cell_val):
                             has_meeting = False
                         else:
@@ -953,7 +953,11 @@ with tab4:
                         
                         try:
                             avail_val = st.session_state.professor_data.loc[prof_name, slot_col]
-                            availability = int(avail_val) == 1 if pd.notna(avail_val) else False
+                            # Only treat as available if explicitly 1 (int or float or string '1')
+                            availability = (
+                                avail_val == 1 or avail_val == 1.0 or
+                                (isinstance(avail_val, str) and avail_val.strip() == '1')
+                            )
                         except (KeyError, TypeError, ValueError):
                             availability = False
                         
@@ -966,12 +970,10 @@ with tab4:
                             else:
                                 styles.append('background-color: #FFB6C1')
                         else:
-                            # Fallback: color by content so we always show something
                             if has_meeting:
                                 styles.append('background-color: #90EE90')
                             else:
                                 styles.append('background-color: #E8E8E8')
-                    
                     else:
                         styles.append('')
                 
