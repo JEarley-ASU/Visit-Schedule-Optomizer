@@ -674,7 +674,8 @@ with tab2:
                     if st.session_state.professor_data.loc[prof_name, f"Slot {i + 1}"] == 1
                 ]
                 slots_text = f" — Slots {', '.join(available_slots)} available" if available_slots else " — No slots available"
-                with st.expander(f"Professor: {prof_name}{slots_text}", expanded=False):
+                # Use a stable key so the expander stays open even if the label text changes when availability updates
+                with st.expander(f"Professor: {prof_name}{slots_text}", expanded=False, key=f"prof_exp_{pk}"):
                     # Allow renaming
                     new_name = st.text_input("Professor Name", value=prof_name, key=f"rename_prof_{pk}")
                     if new_name != prof_name and new_name:
