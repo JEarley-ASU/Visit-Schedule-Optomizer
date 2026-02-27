@@ -693,12 +693,6 @@ with tab2:
                         col_idx = slot_idx % len(cols)
                         with cols[col_idx]:
                             current_avail = st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"]
-                            # Color bar: green = available, red = unavailable
-                            bar_color = "#90EE90" if current_avail == 1 else "#FFB6C1"
-                            st.markdown(
-                                f'<div style="height:4px; background:{bar_color}; border-radius:2px; margin-bottom:2px;"></div>',
-                                unsafe_allow_html=True
-                            )
                             selected = st.selectbox(
                                 f"Slot {slot_idx + 1}",
                                 options=["Available", "Unavailable"],
@@ -706,11 +700,18 @@ with tab2:
                                 key=f"prof_avail_{pk}_{slot_idx}"
                             )
                             new_value = 1 if selected == "Available" else 0
+                            # Update stored availability if changed
                             if new_value != current_avail:
                                 st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"] = new_value
                                 # Check if professor became completely unavailable and clear preferences
                                 clear_preferences_for_unavailable_professors()
-                                st.rerun()
+                                current_avail = new_value
+                            # Color bar: green = available, red = unavailable (use latest value without forcing a rerun)
+                            bar_color = "#90EE90" if current_avail == 1 else "#FFB6C1"
+                            st.markdown(
+                                f'<div style="height:4px; background:{bar_color}; border-radius:2px; margin-bottom:2px;"></div>',
+                                unsafe_allow_html=True
+                            )
                     
                     # Remove button
                     if st.button("Remove Professor", key=f"remove_prof_exp_{pk}"):
