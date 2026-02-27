@@ -668,14 +668,17 @@ with tab2:
             prof_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
             for prof_name in sorted_professors:
                 pk = prof_key_safe(prof_name)
-                # Build "Slots X, Y, Z available" for the expander label
-                available_slots = [
-                    str(i + 1) for i in range(st.session_state.num_slots)
-                    if st.session_state.professor_data.loc[prof_name, f"Slot {i + 1}"] == 1
-                ]
-                slots_text = f" — Slots {', '.join(available_slots)} available" if available_slots else " — No slots available"
-                # Use a stable key so the expander stays open even if the label text changes when availability updates
-                with st.expander(f"Professor: {prof_name}{slots_text}", expanded=False, key=f"prof_exp_{pk}"):
+                # Keep expander label stable so it doesn't collapse when availability text changes
+                with st.expander(f"Professor: {prof_name}", expanded=False):
+                    # Show a one-line summary of available slots inside the expander instead of in the label
+                    available_slots = [
+                        str(i + 1) for i in range(st.session_state.num_slots)
+                        if st.session_state.professor_data.loc[prof_name, f"Slot {i + 1}"] == 1
+                    ]
+                    if available_slots:
+                        st.caption(f"Slots available: {', '.join(available_slots)}")
+                    else:
+                        st.caption("Slots available: none")
                     # Allow renaming
                     new_name = st.text_input("Professor Name", value=prof_name, key=f"rename_prof_{pk}")
                     if new_name != prof_name and new_name:
