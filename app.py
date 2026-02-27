@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import json
-import s_optomize as sop
 from io import BytesIO
+import streamlit.components.v1 as components
+
+import s_optomize as sop
 
 # Page configuration
 st.set_page_config(page_title="Meeting Scheduler", layout="wide")
@@ -25,6 +27,153 @@ if 'professor_schedule' not in st.session_state:
     st.session_state.professor_schedule = None
 if 'filename' not in st.session_state:
     st.session_state.filename = None
+
+def load_from_local_storage(keys):
+    """
+    Load a small set of values from the browser's localStorage.
+
+    This works by:
+    - Injecting a tiny HTML/JS bridge (via `streamlit.components.v1.html`) that reads
+      localStorage for the requested keys and encodes the results into a short JSON string
+      in the page's query parameters, then reloads the page once.
+    - On the next run, Python reads that JSON from `st.experimental_get_query_params`,
+      parses it, and returns a dict limited to the requested keys.
+
+    Security / privacy implications:
+    - localStorage is readable by any JavaScript running on the same origin. Do NOT store
+      sensitive data (passwords, secrets, tokens, PII) in these keys.
+    - Query parameters briefly contain an encoded JSON blob of the stored values during the
+      hand-off. These URLs may appear in browser history, logs, or analytics.
+    - This mechanism is meant only for small, non-sensitive UI preferences (e.g. filters,
+      last-selected options), not for large or confidential datasets.
+    """
+    if not keys:
+        return {}
+
+    keys = list(keys)
+    params = st.experimental_get_query_params()
+
+    # If JS has already pushed data into the URL, read it and then clean it up.
+    if "__ls_data" in params:
+        raw = params.get("__ls_data", ["{}"])[0]
+        try:
+            stored_raw = json.loads(raw)
+        except Exception:
+            stored_raw = {}
+
+        # Drop our helper params so we don't keep reprocessing them.
+        cleaned = {k: v for k, v in params.items() if k not in ["__ls_data", "__ls_loaded"]}
+        st.experimental_set_query_params(**cleaned)
+
+        result = {}
+        for k in keys:
+            if k in stored_raw:
+                encoded_val = stored_raw[k]
+                try:
+                    result[k] = json.loads(encoded_val)
+                except Exception:
+                    # Fall back to raw string if JSON decoding fails.
+                    result[k] = encoded_val
+        return result
+
+    # If we haven't loaded from localStorage yet in this session, inject JS to do it.
+    if not st.session_state.get("_local_storage_loaded_once"):
+        st.session_state["_local_storage_loaded_once"] = True
+        keys_json = json.dumps(keys)
+        components.html(
+            f"""
+<script>
+(function() {{
+  try {{
+    const keys = {keys_json};
+    const stored = {{}};
+    keys.forEach((k) => {{
+      try {{
+        const v = window.localStorage.getItem(k);
+        if (v !== null) {{
+          stored[k] = v;
+        }}
+      }} catch (e) {{
+        console.error("Error reading localStorage for key", k, e);
+      }}
+    }});
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("__ls_loaded")) {{
+      params.set("__ls_loaded", "1");
+      params.set("__ls_data", JSON.stringify(stored));
+      const newUrl = window.location.pathname + "?" + params.toString() + window.location.hash;
+      window.location.replace(newUrl);
+    }}
+  }} catch (e) {{
+    console.error("localStorage bridge load failed", e);
+  }}
+}})();
+</script>
+            """,
+            height=0,
+        )
+
+    # Nothing loaded yet on this initial run.
+    return {}
+
+
+def save_to_local_storage(keys):
+    """
+    Persist selected st.session_state values to browser localStorage.
+
+    For each requested key:
+    - The current st.session_state value is JSON-encoded (with non-serializable objects
+      converted to strings) and stored under that key in localStorage.
+    - If the value is missing, None, or empty, the key is removed from localStorage.
+
+    Security / privacy implications:
+    - localStorage is long-lived and readable by JavaScript on the same origin.
+      Do NOT use this for secrets, tokens, or sensitive personal data.
+    - All values are stored as JSON strings; users could inspect/modify them via the
+      browser dev tools.
+    """
+    if not keys:
+        return
+
+    payload = {}
+    for k in keys:
+        if k not in st.session_state:
+            # Missing from session_state: treat as a delete in JS.
+            payload[k] = None
+            continue
+        val = st.session_state.get(k)
+        try:
+            encoded = json.dumps(val, default=str)
+        except TypeError:
+            encoded = json.dumps(str(val))
+        payload[k] = encoded
+
+    data_json = json.dumps(payload)
+    components.html(
+        f"""
+<script>
+(function() {{
+  try {{
+    const data = {data_json};
+    Object.entries(data).forEach(([k, v]) => {{
+      try {{
+        if (v === null || v === undefined) {{
+          window.localStorage.removeItem(k);
+        }} else {{
+          window.localStorage.setItem(k, v);
+        }}
+      }} catch (e) {{
+        console.error("Error writing localStorage for key", k, e);
+      }}
+    }});
+  }} catch (e) {{
+    console.error("localStorage bridge save failed", e);
+  }}
+}})();
+</script>
+        """,
+        height=0,
+    )
 
 def initialize_schedule(new_num_slots):
     """Initialize or update the schedule with new number of slots."""
