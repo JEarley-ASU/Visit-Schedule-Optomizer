@@ -1013,72 +1013,74 @@ with tab3:
                 visitor_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
                 sorted_visitors = sorted(st.session_state.visitor_data.index)
                 
-                # One form for the whole page: single "Apply preferences" applies to all visitors.
-                # Remove buttons must be outside the form (Streamlit doesn't allow st.button inside st.form).
-                with st.form(key="visitor_prefs_form_all"):
-                    pref_submitted = st.form_submit_button("Apply preferences")
-                    for visitor_name in sorted_visitors:
-                        vk = visitor_key_safe(visitor_name)
-                        with st.expander(f"Visitor: {visitor_name}", expanded=False):
-                            st.text_input("Visitor Name", value=visitor_name, key=f"visitor_name_{vk}", help="Change name then click Apply preferences below to save.")
-                            st.write("**Preferences** (select professor for each; leave blank for no preference):")
-                            cols = st.columns(min(6, num_prefs))
-                            for pref_idx in range(num_prefs):
-                                col_name = f"Preference {pref_idx + 1}"
-                                col_idx = pref_idx % len(cols)
-                                with cols[col_idx]:
-                                    current_val = st.session_state.visitor_data.loc[visitor_name, col_name]
-                                    display_val = "" if (pd.isna(current_val) or str(current_val).strip() in ("", " ")) else str(current_val).strip()
-                                    if display_val and display_val in listable_professors:
-                                        option_index = listable_professors.index(display_val) + 1
-                                    else:
-                                        option_index = 0
-                                    st.selectbox(
-                                        col_name,
-                                        options=pref_options,
-                                        index=min(option_index, len(pref_options) - 1),
-                                        key=f"visitor_pref_{vk}_{pref_idx}"
-                                    )
+                # Table: first column = student names, rest = preference dropdowns (faculty)
+                display_df = st.session_state.visitor_data.loc[sorted_visitors].copy()
+                display_df.insert(0, "Student", display_df.index)
+                display_df = display_df.reset_index(drop=True)
+                # Normalize blank preference for display (store uses " ", dropdown uses "")
+                for c in display_df.columns:
+                    if c.startswith("Preference"):
+                        display_df[c] = display_df[c].apply(
+                            lambda x: "" if (pd.isna(x) or str(x).strip() in ("", " ")) else str(x).strip()
+                        )
                 
-                if pref_submitted:
-                    for visitor_name in sorted_visitors:
-                        vk = visitor_key_safe(visitor_name)
-                        new_name = st.session_state.get(f"visitor_name_{vk}", visitor_name)
-                        effective_name = visitor_name
-                        if new_name and new_name != visitor_name and new_name not in st.session_state.visitor_data.index:
-                            st.session_state.visitor_data = st.session_state.visitor_data.rename(index={visitor_name: new_name})
-                            if visitor_name in st.session_state.name_memory:
-                                idx = st.session_state.name_memory.index(visitor_name)
+                column_config = {"Student": st.column_config.TextColumn("Student", width="medium")}
+                for i in range(1, num_prefs + 1):
+                    col_name = f"Preference {i}"
+                    column_config[col_name] = st.column_config.SelectboxColumn(
+                        col_name,
+                        options=pref_options,
+                        width="medium",
+                        required=False
+                    )
+                
+                edited_df = st.data_editor(
+                    display_df,
+                    column_config=column_config,
+                    key="visitor_prefs_editor",
+                    use_container_width=True,
+                    num_rows="fixed"
+                )
+                
+                if st.button("Apply preferences", key="apply_visitor_prefs_btn"):
+                    # Sync table back to visitor_data (rows match sorted_visitors by position)
+                    for i, row in edited_df.iterrows():
+                        if i >= len(sorted_visitors):
+                            break
+                        old_name = sorted_visitors[i]
+                        new_name = str(row["Student"]).strip() if pd.notna(row["Student"]) else old_name
+                        if not new_name:
+                            new_name = old_name
+                        # Rename if student name was changed
+                        if new_name != old_name and new_name not in st.session_state.visitor_data.index:
+                            st.session_state.visitor_data = st.session_state.visitor_data.rename(index={old_name: new_name})
+                            if old_name in st.session_state.name_memory:
+                                idx = st.session_state.name_memory.index(old_name)
                                 st.session_state.name_memory[idx] = new_name
+                            old_name = new_name
+                        for col in st.session_state.visitor_data.columns:
+                            val = row.get(col, "")
+                            if pd.isna(val) or (isinstance(val, str) and val.strip() == ""):
+                                st.session_state.visitor_data.loc[old_name, col] = " "
                             else:
-                                st.session_state.name_memory.append(new_name)
-                            effective_name = new_name
-                        for pref_idx in range(num_prefs):
-                            col_name = f"Preference {pref_idx + 1}"
-                            raw = st.session_state.get(f"visitor_pref_{vk}_{pref_idx}", "")
-                            new_val = " " if (raw == "" or not raw) else raw
-                            st.session_state.visitor_data.loc[effective_name, col_name] = new_val
+                                st.session_state.visitor_data.loc[old_name, col] = str(val).strip()
                     st.rerun()
                 
                 st.caption("Remove a visitor:")
-                for visitor_name in sorted_visitors:
-                    vk = visitor_key_safe(visitor_name)
-                    c1, c2 = st.columns([3, 1])
-                    with c1:
-                        st.write(visitor_name)
-                    with c2:
-                        if st.button("Remove", key=f"remove_visitor_exp_{vk}"):
-                            remove_visitor(visitor_name)
-                            st.rerun()
-                
-                # Summary table (read-only view, like Faculty summary)
-                st.subheader("Summary Table")
-                visitor_summary = st.session_state.visitor_data.copy().sort_index()
-                for c in visitor_summary.columns:
-                    visitor_summary[c] = visitor_summary[c].apply(
-                        lambda x: "" if (isinstance(x, str) and x.strip() == " ") or pd.isna(x) else x
+                rm_col1, rm_col2 = st.columns([2, 1])
+                with rm_col1:
+                    visitor_to_remove = st.selectbox(
+                        "Select visitor to remove",
+                        options=sorted_visitors,
+                        key="remove_visitor_select"
                     )
-                st.dataframe(visitor_summary, use_container_width=True)
+                with rm_col2:
+                    if st.button("Remove", key="remove_visitor_btn"):
+                        if visitor_to_remove:
+                            remove_visitor(visitor_to_remove)
+                            if "visitor_prefs_editor" in st.session_state:
+                                del st.session_state["visitor_prefs_editor"]
+                            st.rerun()
         else:
             st.info("No visitors added yet. Use the 'Add New Visitor' form above.")
 
