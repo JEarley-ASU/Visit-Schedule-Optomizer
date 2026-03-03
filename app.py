@@ -1018,7 +1018,9 @@ with tab3:
                                 current_normalized = " " if (pd.isna(current_val) or str(current_val).strip() in ("", " ")) else str(current_val).strip()
                                 if new_val != current_normalized:
                                     st.session_state.visitor_data.loc[visitor_name, col_name] = new_val
-                                    st.rerun()
+                                    # Do NOT st.rerun() here: with many students (e.g. 26) and many dropdowns,
+                                    # each rerun re-renders the whole list and causes a loading loop. The value
+                                    # is already saved; the next natural rerun (e.g. another click) will show it.
                         
                         if st.button("Remove Visitor", key=f"remove_visitor_exp_{vk}"):
                             remove_visitor(visitor_name)
