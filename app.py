@@ -1030,6 +1030,7 @@ with tab3:
                         st.write("**Preferences** (select professor for each; leave blank for no preference):")
                         # Use a form so we only update session_state on "Apply" — avoids perpetual rerun with many students
                         with st.form(key=f"visitor_prefs_form_{vk}"):
+                            pref_submitted = st.form_submit_button("Apply preferences")
                             cols = st.columns(min(6, num_prefs))
                             for pref_idx in range(num_prefs):
                                 col_name = f"Preference {pref_idx + 1}"
@@ -1047,7 +1048,6 @@ with tab3:
                                         index=min(option_index, len(pref_options) - 1),
                                         key=f"visitor_pref_{vk}_{pref_idx}"
                                     )
-                            pref_submitted = st.form_submit_button("Apply preferences")
                         
                         if pref_submitted:
                             for pref_idx in range(num_prefs):
