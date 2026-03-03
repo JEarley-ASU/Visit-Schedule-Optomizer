@@ -1014,6 +1014,7 @@ with tab3:
                 sorted_visitors = sorted(st.session_state.visitor_data.index)
                 
                 # Single form for entire page: one "Apply preferences" applies to all visitors
+                # (st.button cannot be used inside st.form, so Remove buttons are below.)
                 with st.form(key="visitor_prefs_form_all"):
                     pref_submitted = st.form_submit_button("Apply preferences")
                     for visitor_name in sorted_visitors:
@@ -1038,9 +1039,11 @@ with tab3:
                                         index=min(option_index, len(pref_options) - 1),
                                         key=f"visitor_pref_{vk}_{pref_idx}"
                                     )
-                            if st.button("Remove Visitor", key=f"remove_visitor_exp_{vk}"):
-                                remove_visitor(visitor_name)
-                                st.rerun()
+                for visitor_name in sorted_visitors:
+                    vk = visitor_key_safe(visitor_name)
+                    if st.button(f"Remove «{visitor_name}»", key=f"remove_visitor_exp_{vk}"):
+                        remove_visitor(visitor_name)
+                        st.rerun()
                 
                 if pref_submitted:
                     for visitor_name in sorted_visitors:
