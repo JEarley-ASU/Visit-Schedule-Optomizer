@@ -616,12 +616,14 @@ def optimize_schedule():
     max_students = st.session_state.get('max_students', 1)
     
     try:
-        # Serialize for cache key (hashable); empty dict for empty DataFrame
+        # Serialize current session state so cache key reflects latest data
         v_dict = st.session_state.visitor_data.to_dict("index") if not st.session_state.visitor_data.empty else {}
         p_dict = st.session_state.professor_data.to_dict("index") if not st.session_state.professor_data.empty else {}
+        # Use sort_keys so JSON is deterministic; clear cache so updates always trigger a fresh run
+        _cached_generate_schedule.clear()
         visitor_schedule, professor_schedule, preference_analysis = _cached_generate_schedule(
-            json.dumps(v_dict, default=str),
-            json.dumps(p_dict, default=str),
+            json.dumps(v_dict, default=str, sort_keys=True),
+            json.dumps(p_dict, default=str, sort_keys=True),
             json.dumps(time_slots),
             max_students,
         )
