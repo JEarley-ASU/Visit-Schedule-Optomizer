@@ -1013,8 +1013,8 @@ with tab3:
                 visitor_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
                 sorted_visitors = sorted(st.session_state.visitor_data.index)
                 
-                # Single form for entire page: one "Apply preferences" applies to all visitors
-                # (st.button cannot be used inside st.form, so Remove buttons are below.)
+                # One form for the whole page: single "Apply preferences" applies to all visitors.
+                # Remove buttons must be outside the form (Streamlit doesn't allow st.button inside st.form).
                 with st.form(key="visitor_prefs_form_all"):
                     pref_submitted = st.form_submit_button("Apply preferences")
                     for visitor_name in sorted_visitors:
@@ -1039,11 +1039,6 @@ with tab3:
                                         index=min(option_index, len(pref_options) - 1),
                                         key=f"visitor_pref_{vk}_{pref_idx}"
                                     )
-                for visitor_name in sorted_visitors:
-                    vk = visitor_key_safe(visitor_name)
-                    if st.button(f"Remove «{visitor_name}»", key=f"remove_visitor_exp_{vk}"):
-                        remove_visitor(visitor_name)
-                        st.rerun()
                 
                 if pref_submitted:
                     for visitor_name in sorted_visitors:
@@ -1064,6 +1059,17 @@ with tab3:
                             new_val = " " if (raw == "" or not raw) else raw
                             st.session_state.visitor_data.loc[effective_name, col_name] = new_val
                     st.rerun()
+                
+                st.caption("Remove a visitor:")
+                for visitor_name in sorted_visitors:
+                    vk = visitor_key_safe(visitor_name)
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.write(visitor_name)
+                    with c2:
+                        if st.button("Remove", key=f"remove_visitor_exp_{vk}"):
+                            remove_visitor(visitor_name)
+                            st.rerun()
                 
                 # Summary table (read-only view, like Faculty summary)
                 st.subheader("Summary Table")
