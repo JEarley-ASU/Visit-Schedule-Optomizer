@@ -1013,57 +1013,61 @@ with tab3:
                 visitor_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
                 sorted_visitors = sorted(st.session_state.visitor_data.index)
                 
-                # Table: first column = student names, rest = preference dropdowns (faculty)
-                display_df = st.session_state.visitor_data.loc[sorted_visitors].copy()
-                display_df.insert(0, "Student", display_df.index)
-                display_df = display_df.reset_index(drop=True)
-                # Normalize blank preference for display (store uses " ", dropdown uses "")
-                for c in display_df.columns:
-                    if c.startswith("Preference"):
-                        display_df[c] = display_df[c].apply(
-                            lambda x: "" if (pd.isna(x) or str(x).strip() in ("", " ")) else str(x).strip()
-                        )
+                # Table built with form + widgets so changing a preference does NOT trigger a rerun until Apply
+                with st.form(key="visitor_prefs_form_all"):
+                    pref_submitted = st.form_submit_button("Apply preferences")
+                    # Header row
+                    num_cols = 1 + num_prefs
+                    header_cols = st.columns(num_cols)
+                    with header_cols[0]:
+                        st.markdown("**Student**")
+                    for j in range(num_prefs):
+                        with header_cols[1 + j]:
+                            st.markdown(f"**Preference {j + 1}**")
+                    # One row per visitor: name + preference dropdowns (values only applied on submit)
+                    for visitor_name in sorted_visitors:
+                        vk = visitor_key_safe(visitor_name)
+                        cols = st.columns(num_cols)
+                        with cols[0]:
+                            st.text_input(
+                                "Name",
+                                value=visitor_name,
+                                key=f"v_name_{vk}",
+                                label_visibility="collapsed"
+                            )
+                        for pref_idx in range(num_prefs):
+                            col_name = f"Preference {pref_idx + 1}"
+                            current_val = st.session_state.visitor_data.loc[visitor_name, col_name]
+                            display_val = "" if (pd.isna(current_val) or str(current_val).strip() in ("", " ")) else str(current_val).strip()
+                            opt_idx = pref_options.index(display_val) if display_val in pref_options else 0
+                            with cols[1 + pref_idx]:
+                                st.selectbox(
+                                    col_name,
+                                    options=pref_options,
+                                    index=min(opt_idx, len(pref_options) - 1),
+                                    key=f"v_pref_{vk}_{pref_idx}",
+                                    label_visibility="collapsed"
+                                )
                 
-                column_config = {"Student": st.column_config.TextColumn("Student", width="medium")}
-                for i in range(1, num_prefs + 1):
-                    col_name = f"Preference {i}"
-                    column_config[col_name] = st.column_config.SelectboxColumn(
-                        col_name,
-                        options=pref_options,
-                        width="medium",
-                        required=False
-                    )
-                
-                edited_df = st.data_editor(
-                    display_df,
-                    column_config=column_config,
-                    key="visitor_prefs_editor",
-                    use_container_width=True,
-                    num_rows="fixed"
-                )
-                
-                if st.button("Apply preferences", key="apply_visitor_prefs_btn"):
-                    # Sync table back to visitor_data (rows match sorted_visitors by position)
-                    for i, row in edited_df.iterrows():
-                        if i >= len(sorted_visitors):
-                            break
-                        old_name = sorted_visitors[i]
-                        new_name = str(row["Student"]).strip() if pd.notna(row["Student"]) else old_name
-                        if not new_name:
-                            new_name = old_name
-                        # Rename if student name was changed
-                        if new_name != old_name and new_name not in st.session_state.visitor_data.index:
-                            st.session_state.visitor_data = st.session_state.visitor_data.rename(index={old_name: new_name})
-                            if old_name in st.session_state.name_memory:
-                                idx = st.session_state.name_memory.index(old_name)
+                if pref_submitted:
+                    # Read submitted values from session_state (form widgets persist there on submit)
+                    for visitor_name in sorted_visitors:
+                        vk = visitor_key_safe(visitor_name)
+                        new_name = (st.session_state.get(f"v_name_{vk}", visitor_name) or visitor_name)
+                        if isinstance(new_name, str):
+                            new_name = new_name.strip() or visitor_name
+                        effective_name = visitor_name
+                        if new_name != visitor_name and new_name not in st.session_state.visitor_data.index:
+                            st.session_state.visitor_data = st.session_state.visitor_data.rename(index={visitor_name: new_name})
+                            if visitor_name in st.session_state.name_memory:
+                                idx = st.session_state.name_memory.index(visitor_name)
                                 st.session_state.name_memory[idx] = new_name
-                            old_name = new_name
-                        for col in st.session_state.visitor_data.columns:
-                            val = row.get(col, "")
-                            if pd.isna(val) or (isinstance(val, str) and val.strip() == ""):
-                                st.session_state.visitor_data.loc[old_name, col] = " "
-                            else:
-                                st.session_state.visitor_data.loc[old_name, col] = str(val).strip()
+                            effective_name = new_name
+                        for pref_idx in range(num_prefs):
+                            col_name = f"Preference {pref_idx + 1}"
+                            raw = st.session_state.get(f"v_pref_{vk}_{pref_idx}", "")
+                            new_val = " " if (raw == "" or not raw) else str(raw).strip()
+                            st.session_state.visitor_data.loc[effective_name, col_name] = new_val
                     st.rerun()
                 
                 st.caption("Remove a visitor:")
@@ -1078,8 +1082,6 @@ with tab3:
                     if st.button("Remove", key="remove_visitor_btn"):
                         if visitor_to_remove:
                             remove_visitor(visitor_to_remove)
-                            if "visitor_prefs_editor" in st.session_state:
-                                del st.session_state["visitor_prefs_editor"]
                             st.rerun()
         else:
             st.info("No visitors added yet. Use the 'Add New Visitor' form above.")
