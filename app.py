@@ -1083,6 +1083,14 @@ with tab3:
                         if visitor_to_remove:
                             remove_visitor(visitor_to_remove)
                             st.rerun()
+                
+                st.subheader("Summary Table")
+                visitor_summary = st.session_state.visitor_data.copy().sort_index()
+                for c in visitor_summary.columns:
+                    visitor_summary[c] = visitor_summary[c].apply(
+                        lambda x: "" if (isinstance(x, str) and x.strip() == " ") or pd.isna(x) else x
+                    )
+                st.dataframe(visitor_summary, use_container_width=True)
         else:
             st.info("No visitors added yet. Use the 'Add New Visitor' form above.")
 
