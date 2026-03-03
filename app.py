@@ -576,7 +576,13 @@ def _cached_generate_schedule(
     Cached schedule generation. Inputs are JSON strings so they are hashable for cache keys.
     Repeated Optimize with the same data returns instantly from cache (TTL 1 hour).
     """
-    visitor_df = pd.DataFrame.from_dict(json.loads(_visitor_json), orient="index")
+    v_data = json.loads(_visitor_json)
+    visitor_df = pd.DataFrame.from_dict(v_data, orient="index")
+    # Ensure preference columns are in order (Preference 1, 2, ...) so optimizer matches column to rank
+    pref_cols = sorted([c for c in visitor_df.columns if isinstance(c, str) and c.startswith("Preference")],
+                      key=lambda c: int(c.split()[-1]))
+    if pref_cols:
+        visitor_df = visitor_df.reindex(columns=pref_cols)
     professor_df = pd.DataFrame.from_dict(json.loads(_professor_json), orient="index")
     time_slots = json.loads(_time_slots_json)
     return sop.generate_schedule(

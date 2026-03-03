@@ -7,6 +7,17 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
     professor_df = professor_df.copy()
     
     students_df.replace(' ', None, inplace=True)  # Replace empty spaces with None
+    # Normalize empty/NaN so they are never treated as a professor name
+    def _blank_pref(v):
+        if v is None or pd.isna(v):
+            return None
+        s = str(v).strip()
+        if s in ('', 'nan'):
+            return None
+        return v
+    for col in students_df.columns:
+        if col.startswith('Preference'):
+            students_df[col] = students_df[col].apply(_blank_pref)
     students = students_df.index.tolist()
 
     # Ensure professor_df has the correct columns in the correct order (Slot 1, Slot 2, ...).
@@ -64,10 +75,11 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
         valid_count = 0
         for col in pref_columns:
             prof = student_row[col]
-            if prof is not None and str(prof).strip() != '' and str(prof).strip() != ' ':
-                prof = str(prof).strip()
-                if prof in professors:
-                    valid_count += 1
+            if prof is None or pd.isna(prof):
+                continue
+            prof = str(prof).strip()
+            if prof and prof.lower() != 'nan' and prof in professors:
+                valid_count += 1
         
         student_pref_counts[student] = valid_count
     
@@ -87,11 +99,12 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
         valid_prefs = []
         for i, col in enumerate(pref_columns):
             prof = student_row[col]
-            # Check if preference is valid (not None, not empty string, not just whitespace)
-            if prof is not None and str(prof).strip() != '' and str(prof).strip() != ' ':
-                prof = str(prof).strip()
-                if prof in professors:
-                    valid_prefs.append((prof, i))
+            if prof is None or pd.isna(prof):
+                continue
+            prof = str(prof).strip()
+            if not prof or prof.lower() == 'nan' or prof not in professors:
+                continue
+            valid_prefs.append((prof, i))
         
         # Get number of preferences for this student
         num_prefs = len(valid_prefs)
@@ -271,8 +284,12 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
         import warnings
         warnings.warn("Solver found a feasible solution but may not be optimal. Consider checking constraints.")
 
-    # Extract and display results in the requested format
-    schedule = [(s, p, t) for (s, p, t) in x if x[s, p, t].varValue == 1]
+    # Extract results: only include assignments where professor is in that student's preference list
+    preferred = {s: set(preferences.get(s, {})) for s in students}
+    schedule = [
+        (s, p, t) for (s, p, t) in x
+        if x[s, p, t].varValue == 1 and p in preferred.get(s, set())
+    ]
 
     # Convert the schedule into a structured DataFrame where key = Student, value = meetings in order
     schedule_dict = {student: [None] * max_meetings for student in students}
