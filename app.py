@@ -853,8 +853,8 @@ with tab2:
             sorted_professors = sorted(st.session_state.professor_data.index)
             prof_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
             num_slots = st.session_state.num_slots
-            slot_options = ["Available", "Unavailable"]
             
+            st.caption("Check = available, uncheck = unavailable.")
             submitted_faculty = {}
             with st.form(key="faculty_availability_form"):
                 faculty_submitted = st.form_submit_button("Apply")
@@ -878,16 +878,14 @@ with tab2:
                         submitted_faculty[(pk, "name")] = name_val
                     for slot_idx in range(num_slots):
                         current_avail = st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"]
-                        opt_idx = 0 if current_avail == 1 else 1
                         with cols[1 + slot_idx]:
-                            slot_val = st.selectbox(
-                                f"Slot {slot_idx + 1}",
-                                options=slot_options,
-                                index=opt_idx,
+                            slot_checked = st.checkbox(
+                                "Available",
+                                value=(current_avail == 1),
                                 key=f"faculty_slot_{pk}_{slot_idx}",
                                 label_visibility="collapsed"
                             )
-                            submitted_faculty[(pk, slot_idx)] = slot_val
+                            submitted_faculty[(pk, slot_idx)] = slot_checked
             
             if faculty_submitted and submitted_faculty:
                 for prof_name in sorted_professors:
@@ -905,8 +903,8 @@ with tab2:
                                     st.session_state.visitor_data.loc[visitor, col] = new_name
                         prof_name = new_name
                     for slot_idx in range(num_slots):
-                        slot_val = submitted_faculty.get((pk, slot_idx), "Unavailable")
-                        val = 1 if slot_val == "Available" else 0
+                        slot_checked = submitted_faculty.get((pk, slot_idx), False)
+                        val = 1 if slot_checked else 0
                         st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"] = val
                 clear_preferences_for_unavailable_professors()
                 st.rerun()

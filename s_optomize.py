@@ -109,29 +109,19 @@ def generate_schedule(students_df, professor_df, time_slots, max_students=2):
         # Get number of preferences for this student
         num_prefs = len(valid_prefs)
         
-        # Calculate priority multiplier: students with fewer preferences get exponentially higher priority
-        # Use exponential multiplier to ensure significant difference
-        # Formula: multiplier = 10^(max_total_prefs - num_prefs)
-        # This means:
-        # - Student with 1 preference (when max is 5): multiplier = 10^4 = 10,000
-        # - Student with 3 preferences (when max is 5): multiplier = 10^2 = 100
-        # - Student with 5 preferences (when max is 5): multiplier = 10^0 = 1
-        # This ensures students with fewer preferences get MUCH higher priority
+        # Priority multiplier: students with fewer preferences get a boost, but CAPPED so that
+        # preference RANK (1st vs 2nd vs 3rd) always dominates. Otherwise a 3rd choice could beat a 1st.
         if num_prefs > 0:
-            priority_multiplier = 10 ** (max_total_prefs - num_prefs)
+            priority_multiplier = min(10 ** (max_total_prefs - num_prefs), 50)
         else:
             priority_multiplier = 1
         
-        # Assign weights: first preference gets highest weight
-        # Use exponential weights based on preference rank (independent of total prefs)
-        # Then multiply by priority_multiplier to boost students with fewer preferences
+        # Assign weights so that 1st choice >> 2nd >> 3rd (rank dominates everything).
+        # Use a steep exponent so e.g. 1st is 10^8 times 3rd choice; no multiplier can override that.
         for prof, pref_index in valid_prefs:
-            # Rank is pref_index + 1 (1-based ranking)
-            rank = pref_index + 1
-            # Base exponential weighting: preference 1 gets 10^6, preference 2 gets 10^5, etc.
-            # Use a fixed large base (max_total_prefs + 1) so all students use same scale
-            base_weight = 10 ** (max_total_prefs + 1 - rank)
-            # Apply priority multiplier to boost students with fewer preferences
+            rank = pref_index + 1  # 1-based
+            # Steep rank weighting: 1st = 10^(4*(n+1)), 2nd = 10^(4*n), ... so 1st is 10^4 times 2nd
+            base_weight = 10 ** (4 * (max_total_prefs + 1 - rank))
             weight = base_weight * priority_multiplier
             student_prefs[prof] = weight
         
