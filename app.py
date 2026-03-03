@@ -10,6 +10,16 @@ import s_optomize as sop
 # Page configuration
 st.set_page_config(page_title="Meeting Scheduler", layout="wide")
 
+# -----------------------------------------------------------------------------
+# Data & performance (Streamlit)
+# - Session state: all live data lives in st.session_state; persist only on Save.
+# - Schedule generation is cached (@st.cache_data) so repeated "Optimize" with
+#   the same inputs returns instantly (TTL 1h).
+# - Visitor/Faculty dropdowns: we do not call st.rerun() on every change so the
+#   app does not get stuck with many students; values are written to session_state
+#   and appear on the next natural rerun.
+# -----------------------------------------------------------------------------
+
 # Initialize session state
 if 'num_slots' not in st.session_state:
     st.session_state.num_slots = 6
@@ -555,8 +565,27 @@ def load_professor_names(names_json, default_slots="available"):
     except Exception as e:
         st.error(f"Failed to load professor names: {str(e)}")
 
+@st.cache_data(ttl=3600)
+def _cached_generate_schedule(
+    _visitor_json: str,
+    _professor_json: str,
+    _time_slots_json: str,
+    _max_students: int,
+) -> tuple:
+    """
+    Cached schedule generation. Inputs are JSON strings so they are hashable for cache keys.
+    Repeated Optimize with the same data returns instantly from cache (TTL 1 hour).
+    """
+    visitor_df = pd.DataFrame.from_dict(json.loads(_visitor_json), orient="index")
+    professor_df = pd.DataFrame.from_dict(json.loads(_professor_json), orient="index")
+    time_slots = json.loads(_time_slots_json)
+    return sop.generate_schedule(
+        visitor_df, professor_df, time_slots, max_students=_max_students
+    )
+
+
 def optimize_schedule():
-    """Run the optimization algorithm."""
+    """Run the optimization algorithm (uses cache for same inputs)."""
     if st.session_state.professor_data.empty:
         st.warning("Please add at least one professor first.")
         return
@@ -581,11 +610,14 @@ def optimize_schedule():
     max_students = st.session_state.get('max_students', 1)
     
     try:
-        visitor_schedule, professor_schedule, preference_analysis = sop.generate_schedule(
-            st.session_state.visitor_data.copy(),
-            st.session_state.professor_data.copy(),
-            time_slots,
-            max_students=max_students
+        # Serialize for cache key (hashable); empty dict for empty DataFrame
+        v_dict = st.session_state.visitor_data.to_dict("index") if not st.session_state.visitor_data.empty else {}
+        p_dict = st.session_state.professor_data.to_dict("index") if not st.session_state.professor_data.empty else {}
+        visitor_schedule, professor_schedule, preference_analysis = _cached_generate_schedule(
+            json.dumps(v_dict, default=str),
+            json.dumps(p_dict, default=str),
+            json.dumps(time_slots),
+            max_students,
         )
         
         st.session_state.visitor_schedule = visitor_schedule
