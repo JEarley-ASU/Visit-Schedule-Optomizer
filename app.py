@@ -1028,31 +1028,33 @@ with tab3:
                                 st.rerun()
                         
                         st.write("**Preferences** (select professor for each; leave blank for no preference):")
-                        cols = st.columns(min(6, num_prefs))
-                        for pref_idx in range(num_prefs):
-                            col_name = f"Preference {pref_idx + 1}"
-                            col_idx = pref_idx % len(cols)
-                            with cols[col_idx]:
-                                current_val = st.session_state.visitor_data.loc[visitor_name, col_name]
-                                display_val = "" if (pd.isna(current_val) or str(current_val).strip() == "" or str(current_val).strip() == " ") else str(current_val).strip()
-                                # Index in pref_options: 0 is "", then listable_professors in order
-                                if display_val and display_val in listable_professors:
-                                    option_index = listable_professors.index(display_val) + 1
-                                else:
-                                    option_index = 0
-                                selected = st.selectbox(
-                                    col_name,
-                                    options=pref_options,
-                                    index=min(option_index, len(pref_options) - 1),
-                                    key=f"visitor_pref_{vk}_{pref_idx}"
-                                )
-                                new_val = " " if (selected == "" or not selected) else selected
-                                current_normalized = " " if (pd.isna(current_val) or str(current_val).strip() in ("", " ")) else str(current_val).strip()
-                                if new_val != current_normalized:
-                                    st.session_state.visitor_data.loc[visitor_name, col_name] = new_val
-                                    # Do NOT st.rerun() here: with many students (e.g. 26) and many dropdowns,
-                                    # each rerun re-renders the whole list and causes a loading loop. The value
-                                    # is already saved; the next natural rerun (e.g. another click) will show it.
+                        # Use a form so we only update session_state on "Apply" — avoids perpetual rerun with many students
+                        with st.form(key=f"visitor_prefs_form_{vk}"):
+                            cols = st.columns(min(6, num_prefs))
+                            for pref_idx in range(num_prefs):
+                                col_name = f"Preference {pref_idx + 1}"
+                                col_idx = pref_idx % len(cols)
+                                with cols[col_idx]:
+                                    current_val = st.session_state.visitor_data.loc[visitor_name, col_name]
+                                    display_val = "" if (pd.isna(current_val) or str(current_val).strip() in ("", " ")) else str(current_val).strip()
+                                    if display_val and display_val in listable_professors:
+                                        option_index = listable_professors.index(display_val) + 1
+                                    else:
+                                        option_index = 0
+                                    st.selectbox(
+                                        col_name,
+                                        options=pref_options,
+                                        index=min(option_index, len(pref_options) - 1),
+                                        key=f"visitor_pref_{vk}_{pref_idx}"
+                                    )
+                            pref_submitted = st.form_submit_button("Apply preferences")
+                        
+                        if pref_submitted:
+                            for pref_idx in range(num_prefs):
+                                col_name = f"Preference {pref_idx + 1}"
+                                raw = st.session_state.get(f"visitor_pref_{vk}_{pref_idx}", "")
+                                new_val = " " if (raw == "" or not raw) else raw
+                                st.session_state.visitor_data.loc[visitor_name, col_name] = new_val
                         
                         if st.button("Remove Visitor", key=f"remove_visitor_exp_{vk}"):
                             remove_visitor(visitor_name)
