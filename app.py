@@ -839,87 +839,96 @@ with tab2:
         
         st.divider()
         
-        # Professor Table
+        # Professor Table: first column = faculty names, other columns = slot availability (Available/Unavailable)
         if not st.session_state.professor_data.empty:
             st.subheader("Professors")
-            
-            # Display professor table with availability (sorted alphabetically)
-            # Use professor name in widget keys so state stays with the correct person after reruns/sorts
             sorted_professors = sorted(st.session_state.professor_data.index)
             prof_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
-            for prof_name in sorted_professors:
-                pk = prof_key_safe(prof_name)
-                # Keep expander label stable so it doesn't collapse when availability text changes
-                with st.expander(f"Professor: {prof_name}", expanded=False):
-                    # Show a one-line summary of available slots inside the expander instead of in the label
-                    available_slots = [
-                        str(i + 1) for i in range(st.session_state.num_slots)
-                        if st.session_state.professor_data.loc[prof_name, f"Slot {i + 1}"] == 1
-                    ]
-                    if available_slots:
-                        st.caption(f"Slots available: {', '.join(available_slots)}")
-                    else:
-                        st.caption("Slots available: none")
-                    # Allow renaming
-                    new_name = st.text_input("Professor Name", value=prof_name, key=f"rename_prof_{pk}")
-                    if new_name != prof_name and new_name:
-                        if new_name not in st.session_state.professor_data.index:
-                            st.session_state.professor_data.rename(index={prof_name: new_name}, inplace=True)
-                            # Update visitor preferences
-                            for visitor in st.session_state.visitor_data.index:
-                                for col in st.session_state.visitor_data.columns:
-                                    if st.session_state.visitor_data.loc[visitor, col] == prof_name:
-                                        st.session_state.visitor_data.loc[visitor, col] = new_name
-                            st.rerun()
-                    
-                    # Availability selectors with green/red color indicator
-                    cols = st.columns(min(6, st.session_state.num_slots))
-                    for slot_idx in range(st.session_state.num_slots):
-                        col_idx = slot_idx % len(cols)
-                        with cols[col_idx]:
-                            current_avail = st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"]
-                            selected = st.selectbox(
+            num_slots = st.session_state.num_slots
+            slot_options = ["Available", "Unavailable"]
+            
+            submitted_faculty = {}
+            with st.form(key="faculty_availability_form"):
+                faculty_submitted = st.form_submit_button("Apply")
+                num_cols = 1 + num_slots
+                header_cols = st.columns(num_cols)
+                with header_cols[0]:
+                    st.markdown("**Faculty**")
+                for j in range(num_slots):
+                    with header_cols[1 + j]:
+                        st.markdown(f"**Slot {j + 1}**")
+                for prof_name in sorted_professors:
+                    pk = prof_key_safe(prof_name)
+                    cols = st.columns(num_cols)
+                    with cols[0]:
+                        name_val = st.text_input(
+                            "Name",
+                            value=prof_name,
+                            key=f"faculty_name_{pk}",
+                            label_visibility="collapsed"
+                        )
+                        submitted_faculty[(pk, "name")] = name_val
+                    for slot_idx in range(num_slots):
+                        current_avail = st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"]
+                        opt_idx = 0 if current_avail == 1 else 1
+                        with cols[1 + slot_idx]:
+                            slot_val = st.selectbox(
                                 f"Slot {slot_idx + 1}",
-                                options=["Available", "Unavailable"],
-                                index=0 if current_avail == 1 else 1,
-                                key=f"prof_avail_{pk}_{slot_idx}"
+                                options=slot_options,
+                                index=opt_idx,
+                                key=f"faculty_slot_{pk}_{slot_idx}",
+                                label_visibility="collapsed"
                             )
-                            new_value = 1 if selected == "Available" else 0
-                            # Update stored availability if changed
-                            if new_value != current_avail:
-                                st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"] = new_value
-                                # Check if professor became completely unavailable and clear preferences
-                                clear_preferences_for_unavailable_professors()
-                                current_avail = new_value
-                            # Color bar: green = available, red = unavailable (use latest value without forcing a rerun)
-                            bar_color = "#90EE90" if current_avail == 1 else "#FFB6C1"
-                            st.markdown(
-                                f'<div style="height:4px; background:{bar_color}; border-radius:2px; margin-bottom:2px;"></div>',
-                                unsafe_allow_html=True
-                            )
-                    
-                    # Remove button
-                    if st.button("Remove Professor", key=f"remove_prof_exp_{pk}"):
-                        remove_professor(prof_name)
+                            submitted_faculty[(pk, slot_idx)] = slot_val
+            
+            if faculty_submitted and submitted_faculty:
+                for prof_name in sorted_professors:
+                    pk = prof_key_safe(prof_name)
+                    new_name = submitted_faculty.get((pk, "name"), prof_name)
+                    if new_name is None or (isinstance(new_name, str) and not new_name.strip()):
+                        new_name = prof_name
+                    else:
+                        new_name = str(new_name).strip()
+                    if new_name != prof_name and new_name not in st.session_state.professor_data.index:
+                        st.session_state.professor_data = st.session_state.professor_data.rename(index={prof_name: new_name})
+                        for visitor in st.session_state.visitor_data.index:
+                            for col in st.session_state.visitor_data.columns:
+                                if st.session_state.visitor_data.loc[visitor, col] == prof_name:
+                                    st.session_state.visitor_data.loc[visitor, col] = new_name
+                        prof_name = new_name
+                    for slot_idx in range(num_slots):
+                        slot_val = submitted_faculty.get((pk, slot_idx), "Unavailable")
+                        val = 1 if slot_val == "Available" else 0
+                        st.session_state.professor_data.loc[prof_name, f"Slot {slot_idx + 1}"] = val
+                clear_preferences_for_unavailable_professors()
+                st.rerun()
+            
+            st.caption("Remove a professor:")
+            rm_f1, rm_f2 = st.columns([2, 1])
+            with rm_f1:
+                prof_to_remove = st.selectbox(
+                    "Select professor to remove",
+                    options=sorted_professors,
+                    key="remove_prof_select",
+                    label_visibility="collapsed"
+                )
+            with rm_f2:
+                if st.button("Remove", key="remove_prof_btn"):
+                    if prof_to_remove:
+                        remove_professor(prof_to_remove)
                         st.rerun()
             
-            # Also show a summary table (sorted alphabetically)
             st.subheader("Summary Table")
-            prof_summary = st.session_state.professor_data.copy()
-            # Sort by index (professor names) alphabetically
-            prof_summary = prof_summary.sort_index()
+            prof_summary = st.session_state.professor_data.copy().sort_index()
             prof_summary_display = prof_summary.copy()
             for col in prof_summary_display.columns:
                 prof_summary_display[col] = prof_summary_display[col].map({1: "Available", 0: "Unavailable"})
-            
-            # Apply color coding: green for Available, red for Unavailable
             def color_cells(val):
                 if val == "Available":
-                    return 'background-color: #90EE90'  # Light green
+                    return 'background-color: #90EE90'
                 elif val == "Unavailable":
-                    return 'background-color: #FFB6C1'  # Light red
+                    return 'background-color: #FFB6C1'
                 return ''
-            
             styled_prof_summary = prof_summary_display.style.applymap(color_cells)
             st.dataframe(styled_prof_summary, use_container_width=True)
             
@@ -1014,6 +1023,8 @@ with tab3:
                 sorted_visitors = sorted(st.session_state.visitor_data.index)
                 
                 # Table built with form + widgets so changing a preference does NOT trigger a rerun until Apply
+                # Capture widget return values so we use them on submit (form widget session_state can be delayed)
+                submitted_names_and_prefs = {}
                 with st.form(key="visitor_prefs_form_all"):
                     pref_submitted = st.form_submit_button("Apply preferences")
                     # Header row
@@ -1029,33 +1040,37 @@ with tab3:
                         vk = visitor_key_safe(visitor_name)
                         cols = st.columns(num_cols)
                         with cols[0]:
-                            st.text_input(
+                            name_val = st.text_input(
                                 "Name",
                                 value=visitor_name,
                                 key=f"v_name_{vk}",
                                 label_visibility="collapsed"
                             )
+                            submitted_names_and_prefs[(vk, "name")] = name_val
                         for pref_idx in range(num_prefs):
                             col_name = f"Preference {pref_idx + 1}"
                             current_val = st.session_state.visitor_data.loc[visitor_name, col_name]
                             display_val = "" if (pd.isna(current_val) or str(current_val).strip() in ("", " ")) else str(current_val).strip()
                             opt_idx = pref_options.index(display_val) if display_val in pref_options else 0
                             with cols[1 + pref_idx]:
-                                st.selectbox(
+                                pref_val = st.selectbox(
                                     col_name,
                                     options=pref_options,
                                     index=min(opt_idx, len(pref_options) - 1),
                                     key=f"v_pref_{vk}_{pref_idx}",
                                     label_visibility="collapsed"
                                 )
+                                submitted_names_and_prefs[(vk, pref_idx)] = pref_val
                 
-                if pref_submitted:
-                    # Read submitted values from session_state (form widgets persist there on submit)
+                if pref_submitted and submitted_names_and_prefs:
+                    # Use captured widget return values (reliable on form submit)
                     for visitor_name in sorted_visitors:
                         vk = visitor_key_safe(visitor_name)
-                        new_name = (st.session_state.get(f"v_name_{vk}", visitor_name) or visitor_name)
-                        if isinstance(new_name, str):
-                            new_name = new_name.strip() or visitor_name
+                        new_name = submitted_names_and_prefs.get((vk, "name"), visitor_name)
+                        if new_name is None or (isinstance(new_name, str) and not new_name.strip()):
+                            new_name = visitor_name
+                        else:
+                            new_name = str(new_name).strip()
                         effective_name = visitor_name
                         if new_name != visitor_name and new_name not in st.session_state.visitor_data.index:
                             st.session_state.visitor_data = st.session_state.visitor_data.rename(index={visitor_name: new_name})
@@ -1065,7 +1080,7 @@ with tab3:
                             effective_name = new_name
                         for pref_idx in range(num_prefs):
                             col_name = f"Preference {pref_idx + 1}"
-                            raw = st.session_state.get(f"v_pref_{vk}_{pref_idx}", "")
+                            raw = submitted_names_and_prefs.get((vk, pref_idx), "")
                             new_val = " " if (raw == "" or not raw) else str(raw).strip()
                             st.session_state.visitor_data.loc[effective_name, col_name] = new_val
                     st.rerun()
