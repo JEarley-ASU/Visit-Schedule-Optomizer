@@ -1013,13 +1013,13 @@ with tab3:
                 visitor_key_safe = lambda name: name.replace(", ", "_").replace(" ", "_")
                 sorted_visitors = sorted(st.session_state.visitor_data.index)
                 
-                for visitor_name in sorted_visitors:
-                    vk = visitor_key_safe(visitor_name)
-                    # Form wraps button + expander so "Apply preferences" is always visible (above the expander)
-                    with st.form(key=f"visitor_prefs_form_{vk}"):
-                        pref_submitted = st.form_submit_button("Apply preferences")
+                # Single form for entire page: one "Apply preferences" applies to all visitors
+                with st.form(key="visitor_prefs_form_all"):
+                    pref_submitted = st.form_submit_button("Apply preferences")
+                    for visitor_name in sorted_visitors:
+                        vk = visitor_key_safe(visitor_name)
                         with st.expander(f"Visitor: {visitor_name}", expanded=False):
-                            st.text_input("Visitor Name", value=visitor_name, key=f"visitor_name_{vk}", help="Change name then click Apply preferences to save.")
+                            st.text_input("Visitor Name", value=visitor_name, key=f"visitor_name_{vk}", help="Change name then click Apply preferences below to save.")
                             st.write("**Preferences** (select professor for each; leave blank for no preference):")
                             cols = st.columns(min(6, num_prefs))
                             for pref_idx in range(num_prefs):
@@ -1038,9 +1038,15 @@ with tab3:
                                         index=min(option_index, len(pref_options) - 1),
                                         key=f"visitor_pref_{vk}_{pref_idx}"
                                     )
-                    
-                    if pref_submitted:
+                            if st.button("Remove Visitor", key=f"remove_visitor_exp_{vk}"):
+                                remove_visitor(visitor_name)
+                                st.rerun()
+                
+                if pref_submitted:
+                    for visitor_name in sorted_visitors:
+                        vk = visitor_key_safe(visitor_name)
                         new_name = st.session_state.get(f"visitor_name_{vk}", visitor_name)
+                        effective_name = visitor_name
                         if new_name and new_name != visitor_name and new_name not in st.session_state.visitor_data.index:
                             st.session_state.visitor_data = st.session_state.visitor_data.rename(index={visitor_name: new_name})
                             if visitor_name in st.session_state.name_memory:
@@ -1048,18 +1054,13 @@ with tab3:
                                 st.session_state.name_memory[idx] = new_name
                             else:
                                 st.session_state.name_memory.append(new_name)
-                            visitor_name = new_name
+                            effective_name = new_name
                         for pref_idx in range(num_prefs):
                             col_name = f"Preference {pref_idx + 1}"
                             raw = st.session_state.get(f"visitor_pref_{vk}_{pref_idx}", "")
                             new_val = " " if (raw == "" or not raw) else raw
-                            st.session_state.visitor_data.loc[visitor_name, col_name] = new_val
-                        st.rerun()
-                    
-                    # Remove button outside form so it always works
-                    if st.button("Remove Visitor", key=f"remove_visitor_exp_{vk}"):
-                        remove_visitor(visitor_name)
-                        st.rerun()
+                            st.session_state.visitor_data.loc[effective_name, col_name] = new_val
+                    st.rerun()
                 
                 # Summary table (read-only view, like Faculty summary)
                 st.subheader("Summary Table")
